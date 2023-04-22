@@ -25,6 +25,24 @@ const exchanger = (path: string, data: string) => {
   });
 };
 
+const newX = (queue: string, payload: string) => {
+  amqp.connect("", (err: Error, connection: amqp.Connection) => {
+    if (err) {
+      throw err;
+    } else {
+      connection.createChannel((err: Error, channel: amqp.Channel) => {
+        if (err) {
+          throw err;
+        } else {
+          channel.assertQueue(queue, { durable: false });
+
+          channel.sendToQueue(queue, Buffer.from(payload));
+        }
+      });
+    }
+  });
+};
+
 export const createUser = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -98,3 +116,89 @@ export const verifyUser = async (req: Request, res: Response) => {
     console.log(error);
   }
 };
+
+export const signinUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { email, password } = req.body;
+
+    const user = await userEntity.findOne({ where: { email } });
+
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        password: user.password,
+        verified: user.verified,
+      },
+      "This is THE SectRE",
+      { expiresIn: "15s" },
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        password: user.password,
+        verified: user.verified,
+      },
+      "veriedRefreshedUser",
+      { expiresIn: "2m" },
+    );
+    // exchanger("AuthUser24", token);
+
+    res.status(200).json({
+      message: "signin ",
+      data: { user, token, refreshToken },
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const refreshUserToken = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { refresh } = req.body;
+
+    // const user = await userEntity.findOne();
+
+    const newToken = jwt.verify(
+      refresh,
+      "veriedRefreshedUser",
+      (err: Error, payload: jwt.JwtPayload) => {
+        if (err) {
+          if (err.name === "TokenExpiredError") {
+            res.json({
+              message: "jwt expired",
+            });
+          } else {
+            throw err;
+          }
+        } else {
+          const token = jwt.sign(
+            {
+              id: payload.id,
+              email: payload.email,
+              password: payload.password,
+              verified: payload.verified,
+            },
+            "This is THE SectRE",
+            { expiresIn: "25s" },
+          );
+          const refreshToken = req.body.refresh;
+
+          res.status(200).json({
+            message: "signin ",
+            data: { token, refreshToken },
+          });
+        }
+      },
+    );
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+
+
